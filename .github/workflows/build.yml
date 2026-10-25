@@ -112,6 +112,7 @@ jobs:
           public class MainActivity extends Activity {
             static final String OLD_PKG = "com.tosmart.ethereal";
             static final String MAIN_CLS = "com.tosmart.dvb.common.mainmenu.LeanbackMainActivity";
+            static final String LIVE_CLS = "com.tosmart.ethereal.home.HomeActivity";
             static final String UPD_CLS = "com.tosmart.stb_extend.ext_view.view.NetUpdateActivity";
             static final String SET_PKG = "com.tosmart.tv.tvsettings";
             static final String SET_CLS = "com.tosmart.tv.tvsettings.MainActivity";
@@ -195,7 +196,7 @@ jobs:
               bar.setBackground(barBg);
               String[][] menu = {
                 {"Installation", "#E91E63", "main"},
-                {"Channel", "#FF9800", "main"},
+                {"Channel", "#FF9800", "live"},
                 {"Update", "#4CAF50", "upd"},
                 {"Network", "#03A9F4", "set"},
                 {"Settings", "#9C27B0", "set"},
@@ -226,6 +227,7 @@ jobs:
                 item.setOnClickListener(v -> {
                   if (m[2].equals("set")) open(SET_PKG, SET_CLS);
                   else if (m[2].equals("upd")) open(OLD_PKG, UPD_CLS);
+                  else if (m[2].equals("live")) open(OLD_PKG, LIVE_CLS);
                   else open(OLD_PKG, MAIN_CLS);
                 });
                 bar.addView(item);
