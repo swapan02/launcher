@@ -200,7 +200,7 @@ jobs:
                 {"Update", "#4CAF50", "upd"},
                 {"Network", "#03A9F4", "set"},
                 {"Settings", "#9C27B0", "set"},
-                {"Other", "#607D8B", "main"}
+                {"Other", "#607D8B", "other"}
               };
               for (final String[] m : menu) {
                 LinearLayout item = new LinearLayout(this);
@@ -228,6 +228,7 @@ jobs:
                   if (m[2].equals("set")) open(SET_PKG, SET_CLS);
                   else if (m[2].equals("upd")) open(OLD_PKG, UPD_CLS);
                   else if (m[2].equals("live")) open(OLD_PKG, LIVE_CLS);
+                  else if (m[2].equals("other")) openOther();
                   else open(OLD_PKG, MAIN_CLS);
                 });
                 bar.addView(item);
@@ -364,6 +365,19 @@ jobs:
                 startActivity(i);
               } catch (Exception e) {
                 Toast.makeText(this, "Cannot open: " + pkg, Toast.LENGTH_LONG).show();
+              }
+            }
+
+            void openOther() {
+              try {
+                Intent i = new Intent("com.tosmart.action.ExtNavHost");
+                i.setComponent(new ComponentName(OLD_PKG, "com.tosmart.stb_extend.ext_view.navigation.ExtNavHostActivity"));
+                i.putExtra("host_type", "Other_Module");
+                i.putExtra("from_home_as_app", true);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+              } catch (Exception e) {
+                Toast.makeText(this, "Cannot open Other menu", Toast.LENGTH_LONG).show();
               }
             }
 
