@@ -88,12 +88,22 @@ jobs:
           import android.graphics.Bitmap;
           import android.graphics.BitmapFactory;
           import android.graphics.Color;
+          import android.graphics.Matrix;
+          import android.media.ExifInterface;
           import android.graphics.Outline;
           import android.graphics.Typeface;
           import android.graphics.drawable.Drawable;
           import android.graphics.drawable.GradientDrawable;
           import android.graphics.drawable.StateListDrawable;
           import android.os.Bundle;
+          import android.os.Handler;
+          import android.text.SpannableStringBuilder;
+          import android.text.Spanned;
+          import android.text.style.ForegroundColorSpan;
+          import android.text.style.RelativeSizeSpan;
+          import java.text.SimpleDateFormat;
+          import java.util.Date;
+          import java.util.Locale;
           import android.text.TextUtils;
           import android.util.TypedValue;
           import android.view.Gravity;
@@ -127,7 +137,15 @@ jobs:
 
             SharedPreferences prefs;
             LinearLayout tileRow;
-            ImageView photo;
+            ImageView[] photos = new ImageView[4];
+            TextView clockTv, dateTv;
+            Handler handler = new Handler();
+            Runnable tick = new Runnable() {
+              @Override public void run() {
+                updateClock();
+                handler.postDelayed(this, 1000 - (System.currentTimeMillis() % 1000) + 5);
+              }
+            };
             float u;
 
             int s(int v) { return Math.round(v * u); }
@@ -169,32 +187,33 @@ jobs:
 
               LinearLayout top = new LinearLayout(this);
               top.setOrientation(LinearLayout.VERTICAL);
-              TextClock clock = new TextClock(this);
-              clock.setFormat12Hour("hh:mm a");
-              clock.setFormat24Hour("hh:mm a");
-              clock.setTextColor(Color.WHITE);
-              clock.setTypeface(Typeface.DEFAULT_BOLD);
-              clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(88));
-              TextClock date = new TextClock(this);
-              date.setFormat12Hour("EEEE, d MMMM yyyy");
-              date.setFormat24Hour("EEEE, d MMMM yyyy");
-              date.setTextColor(0xFFB8C0FF);
-              date.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(34));
-              top.addView(clock);
-              top.addView(date);
+              clockTv = new TextView(this);
+              clockTv.setTypeface(Typeface.DEFAULT_BOLD);
+              clockTv.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(84));
+              clockTv.setSingleLine(true);
+              dateTv = new TextView(this);
+              dateTv.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(36));
+              dateTv.setSingleLine(true);
+              top.addView(clockTv);
+              top.addView(dateTv);
               LinearLayout topRow = new LinearLayout(this);
               topRow.setOrientation(LinearLayout.HORIZONTAL);
               topRow.addView(top, new LinearLayout.LayoutParams(0, WRAP, 1f));
-              photo = new ImageView(this);
-              photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-              photo.setVisibility(View.GONE);
-              photo.setOutlineProvider(new ViewOutlineProvider() {
-                @Override public void getOutline(View v, Outline o) {
-                  o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), s(24));
-                }
-              });
-              photo.setClipToOutline(true);
-              topRow.addView(photo, new LinearLayout.LayoutParams(s(210), s(260)));
+              for (int k = 3; k >= 0; k--) {
+                ImageView pv = new ImageView(this);
+                pv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                pv.setVisibility(View.GONE);
+                pv.setOutlineProvider(new ViewOutlineProvider() {
+                  @Override public void getOutline(View v, Outline o) {
+                    o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), s(24));
+                  }
+                });
+                pv.setClipToOutline(true);
+                LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(s(210), s(260));
+                plp.leftMargin = s(16);
+                topRow.addView(pv, plp);
+                photos[k] = pv;
+              }
               root.addView(topRow, new LinearLayout.LayoutParams(MATCH, WRAP));
 
               HorizontalScrollView sv = new HorizontalScrollView(this);
@@ -261,6 +280,8 @@ jobs:
               super.onResume();
               loadPhoto();
               refresh();
+              handler.removeCallbacks(tick);
+              handler.post(tick);
             }
 
             List<String> getTiles() {
@@ -389,10 +410,55 @@ jobs:
               }
             }
 
+            @Override protected void onPause() {
+              super.onPause();
+              handler.removeCallbacks(tick);
+            }
+
+            void put(SpannableStringBuilder sb, String str, int color) {
+              int st = sb.length();
+              sb.append(str);
+              sb.setSpan(new ForegroundColorSpan(color), st, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+
+            String fmt(String pattern, Date d) {
+              return new SimpleDateFormat(pattern, Locale.ENGLISH).format(d);
+            }
+
+            void updateClock() {
+              Date now = new Date();
+              SpannableStringBuilder sb = new SpannableStringBuilder();
+              put(sb, fmt("hh", now), 0xFF4FC3F7);
+              put(sb, ":", 0xFFFFFFFF);
+              put(sb, fmt("mm", now), 0xFFFFD54F);
+              put(sb, ":", 0xFFFFFFFF);
+              put(sb, fmt("ss", now), 0xFFFF6E9C);
+              put(sb, " ", 0xFFFFFFFF);
+              int st = sb.length();
+              put(sb, fmt("a", now), 0xFF69F0AE);
+              sb.setSpan(new RelativeSizeSpan(0.45f), st, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+              clockTv.setText(sb);
+              SpannableStringBuilder ds = new SpannableStringBuilder();
+              put(ds, fmt("EEEE", now), 0xFFFF8A65);
+              put(ds, ", ", 0xFFFFFFFF);
+              put(ds, fmt("d", now), 0xFF81C784);
+              put(ds, " ", 0xFFFFFFFF);
+              put(ds, fmt("MMMM", now), 0xFFBA68C8);
+              put(ds, " ", 0xFFFFFFFF);
+              put(ds, fmt("yyyy", now), 0xFF4DD0E1);
+              dateTv.setText(ds);
+            }
+
             void loadPhoto() {
+              String[] names = {"launcher_photo.jpg", "launcher_photo2.jpg", "launcher_photo3.jpg", "launcher_photo4.jpg"};
+              for (int k = 0; k < 4; k++) {
+                loadOne(photos[k], new File(android.os.Environment.getExternalStorageDirectory(), names[k]));
+              }
+            }
+
+            void loadOne(ImageView iv, File f) {
               try {
-                File f = new File(android.os.Environment.getExternalStorageDirectory(), "launcher_photo.jpg");
-                if (!f.exists()) { photo.setVisibility(View.GONE); return; }
+                if (!f.exists()) { iv.setVisibility(View.GONE); return; }
                 BitmapFactory.Options o = new BitmapFactory.Options();
                 o.inJustDecodeBounds = true;
                 BitmapFactory.decodeFile(f.getPath(), o);
@@ -401,11 +467,24 @@ jobs:
                 BitmapFactory.Options o2 = new BitmapFactory.Options();
                 o2.inSampleSize = ss;
                 Bitmap bm = BitmapFactory.decodeFile(f.getPath(), o2);
-                if (bm == null) { photo.setVisibility(View.GONE); return; }
-                photo.setImageBitmap(bm);
-                photo.setVisibility(View.VISIBLE);
+                if (bm == null) { iv.setVisibility(View.GONE); return; }
+                try {
+                  int ori = new ExifInterface(f.getPath()).getAttributeInt(
+                      ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                  int deg = 0;
+                  if (ori == ExifInterface.ORIENTATION_ROTATE_90) deg = 90;
+                  else if (ori == ExifInterface.ORIENTATION_ROTATE_180) deg = 180;
+                  else if (ori == ExifInterface.ORIENTATION_ROTATE_270) deg = 270;
+                  if (deg != 0) {
+                    Matrix mx = new Matrix();
+                    mx.postRotate(deg);
+                    bm = Bitmap.createBitmap(bm, 0, 0, bm.getWidth(), bm.getHeight(), mx, true);
+                  }
+                } catch (Exception ignored) { }
+                iv.setImageBitmap(bm);
+                iv.setVisibility(View.VISIBLE);
               } catch (Exception e) {
-                photo.setVisibility(View.GONE);
+                iv.setVisibility(View.GONE);
               }
             }
 
