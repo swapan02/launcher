@@ -111,7 +111,8 @@ jobs:
 
           public class MainActivity extends Activity {
             static final String OLD_PKG = "com.tosmart.ethereal";
-            static final String OLD_CLS = "com.tosmart.ethereal.init.InitActivity";
+            static final String MAIN_CLS = "com.tosmart.dvb.common.mainmenu.LeanbackMainActivity";
+            static final String UPD_CLS = "com.tosmart.stb_extend.ext_view.view.NetUpdateActivity";
             static final String SET_PKG = "com.tosmart.tv.tvsettings";
             static final String SET_CLS = "com.tosmart.tv.tvsettings.MainActivity";
             static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
@@ -193,12 +194,12 @@ jobs:
               barBg.setCornerRadius(s(36));
               bar.setBackground(barBg);
               String[][] menu = {
-                {"Installation", "#E91E63", "old"},
-                {"Channel", "#FF9800", "old"},
-                {"Update", "#4CAF50", "old"},
+                {"Installation", "#E91E63", "main"},
+                {"Channel", "#FF9800", "main"},
+                {"Update", "#4CAF50", "upd"},
                 {"Network", "#03A9F4", "set"},
                 {"Settings", "#9C27B0", "set"},
-                {"Other", "#607D8B", "old"}
+                {"Other", "#607D8B", "main"}
               };
               for (final String[] m : menu) {
                 LinearLayout item = new LinearLayout(this);
@@ -224,7 +225,8 @@ jobs:
                 item.setLayoutParams(ilp);
                 item.setOnClickListener(v -> {
                   if (m[2].equals("set")) open(SET_PKG, SET_CLS);
-                  else open(OLD_PKG, OLD_CLS);
+                  else if (m[2].equals("upd")) open(OLD_PKG, UPD_CLS);
+                  else open(OLD_PKG, MAIN_CLS);
                 });
                 bar.addView(item);
               }
@@ -343,12 +345,20 @@ jobs:
             void open(String pkg, String cls) {
               try {
                 PackageManager pm = getPackageManager();
-                Intent i = pm.getLaunchIntentForPackage(pkg);
-                if (i == null) i = pm.getLeanbackLaunchIntentForPackage(pkg);
-                if (i == null && cls != null) {
+                Intent i = null;
+                if (cls != null) {
                   i = new Intent(Intent.ACTION_MAIN);
                   i.setComponent(new ComponentName(pkg, cls));
+                  i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                  try {
+                    startActivity(i);
+                    return;
+                  } catch (Exception e) {
+                    i = null;
+                  }
                 }
+                i = pm.getLaunchIntentForPackage(pkg);
+                if (i == null) i = pm.getLeanbackLaunchIntentForPackage(pkg);
                 startActivity(i);
               } catch (Exception e) {
                 Toast.makeText(this, "Cannot open: " + pkg, Toast.LENGTH_LONG).show();
