@@ -44,17 +44,18 @@ jobs:
               applicationId 'com.test.launcher'
               minSdk 21
               targetSdk 33
-              versionCode 1
-              versionName '1.0'
+              versionCode 2
+              versionName '2.0'
             }
           }
           X
           cat > app/src/main/AndroidManifest.xml << 'X'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
             <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
             <uses-feature android:name="android.software.leanback" android:required="false" />
-            <application android:label="Test Launcher">
+            <application android:label="My Launcher">
               <activity android:name=".MainActivity"
                 android:exported="true"
                 android:launchMode="singleTask"
@@ -76,62 +77,284 @@ jobs:
           cat > app/src/main/java/com/test/launcher/MainActivity.java << 'X'
           package com.test.launcher;
           import android.app.Activity;
+          import android.app.AlertDialog;
           import android.content.ComponentName;
           import android.content.Intent;
+          import android.content.SharedPreferences;
+          import android.content.pm.ApplicationInfo;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
           import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.Drawable;
+          import android.graphics.drawable.GradientDrawable;
+          import android.graphics.drawable.StateListDrawable;
           import android.os.Bundle;
+          import android.text.TextUtils;
+          import android.util.TypedValue;
           import android.view.Gravity;
           import android.view.View;
-          import android.widget.Button;
+          import android.view.ViewGroup;
+          import android.widget.FrameLayout;
+          import android.widget.HorizontalScrollView;
+          import android.widget.ImageView;
           import android.widget.LinearLayout;
+          import android.widget.TextClock;
           import android.widget.TextView;
           import android.widget.Toast;
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Set;
+
           public class MainActivity extends Activity {
-            LinearLayout root;
+            static final String OLD_PKG = "com.tosmart.ethereal";
+            static final String OLD_CLS = "com.tosmart.ethereal.init.InitActivity";
+            static final String SET_PKG = "com.tosmart.tv.tvsettings";
+            static final String SET_CLS = "com.tosmart.tv.tvsettings.MainActivity";
+            static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
+            static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
+
+            SharedPreferences prefs;
+            LinearLayout tileRow;
+            float u;
+
+            int s(int v) { return Math.round(v * u); }
+
+            Drawable bg(int normal, int focused, int radius) {
+              GradientDrawable n = new GradientDrawable();
+              n.setColor(normal);
+              n.setCornerRadius(radius);
+              GradientDrawable f = new GradientDrawable();
+              f.setColor(focused);
+              f.setCornerRadius(radius);
+              f.setStroke(s(5), Color.WHITE);
+              StateListDrawable sl = new StateListDrawable();
+              sl.addState(new int[]{android.R.attr.state_focused}, f);
+              sl.addState(new int[]{android.R.attr.state_pressed}, f);
+              sl.addState(new int[]{}, n);
+              return sl;
+            }
+
+            TextView text(String t, int px, int color) {
+              TextView tv = new TextView(this);
+              tv.setText(t);
+              tv.setTextColor(color);
+              tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, px);
+              tv.setGravity(Gravity.CENTER);
+              return tv;
+            }
+
             @Override protected void onCreate(Bundle b) {
               super.onCreate(b);
-              root = new LinearLayout(this);
+              u = getResources().getDisplayMetrics().widthPixels / 1920f;
+              prefs = getSharedPreferences("launcher", MODE_PRIVATE);
+
+              LinearLayout root = new LinearLayout(this);
               root.setOrientation(LinearLayout.VERTICAL);
-              root.setGravity(Gravity.CENTER);
-              root.setBackgroundColor(Color.parseColor("#101830"));
-              root.setPadding(80, 40, 80, 40);
-              TextView t = new TextView(this);
-              t.setText("Test Launcher OK");
-              t.setTextColor(Color.WHITE);
-              t.setTextSize(36);
-              t.setGravity(Gravity.CENTER);
-              root.addView(t);
-              add("YouTube", "com.google.android.youtube.tv", null);
-              add("Dates+", "com.datesplus.iptv", null);
-              add("Settings", "com.tosmart.tv.tvsettings", "com.tosmart.tv.tvsettings.MainActivity");
-              add("Old Home (Satellite menu)", "com.tosmart.ethereal", "com.tosmart.ethereal.init.InitActivity");
+              root.setPadding(s(80), s(50), s(80), s(40));
+              root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                  new int[]{0xFF0A0F2E, 0xFF1B1464, 0xFF4A1D7A}));
+
+              LinearLayout top = new LinearLayout(this);
+              top.setOrientation(LinearLayout.VERTICAL);
+              TextClock clock = new TextClock(this);
+              clock.setFormat12Hour("hh:mm a");
+              clock.setFormat24Hour("hh:mm a");
+              clock.setTextColor(Color.WHITE);
+              clock.setTypeface(Typeface.DEFAULT_BOLD);
+              clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(88));
+              TextClock date = new TextClock(this);
+              date.setFormat12Hour("EEEE, d MMMM yyyy");
+              date.setFormat24Hour("EEEE, d MMMM yyyy");
+              date.setTextColor(0xFFB8C0FF);
+              date.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(34));
+              top.addView(clock);
+              top.addView(date);
+              root.addView(top, new LinearLayout.LayoutParams(MATCH, WRAP));
+
+              HorizontalScrollView sv = new HorizontalScrollView(this);
+              sv.setHorizontalScrollBarEnabled(false);
+              sv.setFillViewport(true);
+              sv.setClipToPadding(false);
+              sv.setPadding(s(10), s(20), s(10), s(20));
+              tileRow = new LinearLayout(this);
+              tileRow.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+              sv.addView(tileRow, new FrameLayout.LayoutParams(WRAP, MATCH));
+              root.addView(sv, new LinearLayout.LayoutParams(MATCH, 0, 1f));
+
+              LinearLayout bar = new LinearLayout(this);
+              bar.setGravity(Gravity.CENTER);
+              bar.setPadding(s(20), s(14), s(20), s(14));
+              GradientDrawable barBg = new GradientDrawable();
+              barBg.setColor(0x44000000);
+              barBg.setCornerRadius(s(36));
+              bar.setBackground(barBg);
+              String[][] menu = {
+                {"Installation", "#E91E63", "old"},
+                {"Channel", "#FF9800", "old"},
+                {"Update", "#4CAF50", "old"},
+                {"Network", "#03A9F4", "set"},
+                {"Settings", "#9C27B0", "set"},
+                {"Other", "#607D8B", "old"}
+              };
+              for (final String[] m : menu) {
+                LinearLayout item = new LinearLayout(this);
+                item.setOrientation(LinearLayout.VERTICAL);
+                item.setGravity(Gravity.CENTER);
+                item.setFocusable(true);
+                item.setClickable(true);
+                item.setPadding(s(10), s(12), s(10), s(12));
+                item.setBackground(bg(0x00000000, 0x55FFFFFF, s(24)));
+                TextView badge = text(m[0].substring(0, 1), s(46), Color.WHITE);
+                badge.setTypeface(Typeface.DEFAULT_BOLD);
+                GradientDrawable bb = new GradientDrawable();
+                bb.setColor(Color.parseColor(m[1]));
+                bb.setCornerRadius(s(24));
+                badge.setBackground(bb);
+                item.addView(badge, new LinearLayout.LayoutParams(s(100), s(100)));
+                TextView lab = text(m[0], s(26), Color.WHITE);
+                LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(WRAP, WRAP);
+                llp.topMargin = s(8);
+                item.addView(lab, llp);
+                LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(s(200), WRAP);
+                ilp.setMargins(s(8), 0, s(8), 0);
+                item.setLayoutParams(ilp);
+                item.setOnClickListener(v -> {
+                  if (m[2].equals("set")) open(SET_PKG, SET_CLS);
+                  else open(OLD_PKG, OLD_CLS);
+                });
+                bar.addView(item);
+              }
+              root.addView(bar, new LinearLayout.LayoutParams(MATCH, WRAP));
               setContentView(root);
-              root.getChildAt(1).requestFocus();
             }
-            void add(final String label, final String pkg, final String cls) {
-              Button btn = new Button(this);
-              btn.setText(label);
-              btn.setTextSize(24);
-              btn.setFocusable(true);
-              LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(900, 150);
-              lp.setMargins(0, 20, 0, 20);
-              btn.setLayoutParams(lp);
-              btn.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                  try {
-                    Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
-                    if (i == null && cls != null) {
-                      i = new Intent(Intent.ACTION_MAIN);
-                      i.setComponent(new ComponentName(pkg, cls));
-                    }
-                    startActivity(i);
-                  } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Cannot open: " + label, Toast.LENGTH_LONG).show();
-                  }
+
+            @Override protected void onResume() {
+              super.onResume();
+              refresh();
+            }
+
+            List<String> getTiles() {
+              String str = prefs.getString("tiles", "com.google.android.youtube.tv|com.datesplus.iptv");
+              List<String> l = new ArrayList<>();
+              for (String x : str.split("\\|")) if (!x.isEmpty()) l.add(x);
+              return l;
+            }
+
+            void saveTiles(List<String> l) {
+              prefs.edit().putString("tiles", TextUtils.join("|", l)).apply();
+            }
+
+            View makeTile(Drawable icon, String label) {
+              LinearLayout t = new LinearLayout(this);
+              t.setOrientation(LinearLayout.VERTICAL);
+              t.setGravity(Gravity.CENTER);
+              t.setFocusable(true);
+              t.setClickable(true);
+              t.setBackground(bg(0x33FFFFFF, 0x66FFFFFF, s(28)));
+              LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(s(300), s(340));
+              lp.setMargins(s(16), 0, s(16), 0);
+              t.setLayoutParams(lp);
+              if (icon != null) {
+                ImageView iv = new ImageView(this);
+                iv.setImageDrawable(icon);
+                t.addView(iv, new LinearLayout.LayoutParams(s(170), s(170)));
+              } else {
+                t.addView(text("+", s(150), Color.WHITE), new LinearLayout.LayoutParams(WRAP, s(170)));
+              }
+              TextView tv = text(label, s(32), Color.WHITE);
+              tv.setMaxLines(1);
+              tv.setEllipsize(TextUtils.TruncateAt.END);
+              LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(s(270), WRAP);
+              tlp.topMargin = s(16);
+              t.addView(tv, tlp);
+              return t;
+            }
+
+            void refresh() {
+              tileRow.removeAllViews();
+              PackageManager pm = getPackageManager();
+              View first = null;
+              for (final String p : getTiles()) {
+                try {
+                  ApplicationInfo ai = pm.getApplicationInfo(p, 0);
+                  final String label = pm.getApplicationLabel(ai).toString();
+                  View t = makeTile(pm.getApplicationIcon(ai), label);
+                  t.setOnClickListener(v -> open(p, null));
+                  t.setOnLongClickListener(v -> { confirmRemove(p, label); return true; });
+                  tileRow.addView(t);
+                  if (first == null) first = t;
+                } catch (PackageManager.NameNotFoundException e) {
                 }
-              });
-              root.addView(btn);
+              }
+              View plus = makeTile(null, "Add app");
+              plus.setOnClickListener(v -> pickApp());
+              tileRow.addView(plus);
+              if (first == null) first = plus;
+              first.requestFocus();
             }
+
+            void confirmRemove(final String pkg, String label) {
+              new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                .setTitle("Remove " + label + " from home?")
+                .setPositiveButton("Remove", (d, w) -> {
+                  List<String> l = getTiles();
+                  l.remove(pkg);
+                  saveTiles(l);
+                  refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+            }
+
+            void pickApp() {
+              PackageManager pm = getPackageManager();
+              Set<String> seen = new HashSet<>();
+              final List<String[]> apps = new ArrayList<>();
+              String[] cats = {Intent.CATEGORY_LAUNCHER, Intent.CATEGORY_LEANBACK_LAUNCHER};
+              for (String cat : cats) {
+                Intent q = new Intent(Intent.ACTION_MAIN).addCategory(cat);
+                for (ResolveInfo r : pm.queryIntentActivities(q, 0)) {
+                  String p = r.activityInfo.packageName;
+                  if (p.equals(getPackageName()) || !seen.add(p)) continue;
+                  apps.add(new String[]{r.loadLabel(pm).toString(), p});
+                }
+              }
+              Collections.sort(apps, new Comparator<String[]>() {
+                public int compare(String[] a, String[] c) { return a[0].compareToIgnoreCase(c[0]); }
+              });
+              String[] names = new String[apps.size()];
+              for (int i = 0; i < names.length; i++) names[i] = apps.get(i)[0];
+              new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                .setTitle("Add app to home")
+                .setItems(names, (d, which) -> {
+                  List<String> l = getTiles();
+                  String p = apps.get(which)[1];
+                  if (!l.contains(p)) l.add(p);
+                  saveTiles(l);
+                  refresh();
+                })
+                .show();
+            }
+
+            void open(String pkg, String cls) {
+              try {
+                PackageManager pm = getPackageManager();
+                Intent i = pm.getLaunchIntentForPackage(pkg);
+                if (i == null) i = pm.getLeanbackLaunchIntentForPackage(pkg);
+                if (i == null && cls != null) {
+                  i = new Intent(Intent.ACTION_MAIN);
+                  i.setComponent(new ComponentName(pkg, cls));
+                }
+                startActivity(i);
+              } catch (Exception e) {
+                Toast.makeText(this, "Cannot open: " + pkg, Toast.LENGTH_LONG).show();
+              }
+            }
+
             @Override public void onBackPressed() { }
           }
           X
