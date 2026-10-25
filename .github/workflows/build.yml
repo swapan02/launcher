@@ -53,6 +53,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
             <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
             <uses-feature android:name="android.software.leanback" android:required="false" />
             <application android:label="My Launcher">
@@ -84,7 +85,10 @@ jobs:
           import android.content.pm.ApplicationInfo;
           import android.content.pm.PackageManager;
           import android.content.pm.ResolveInfo;
+          import android.graphics.Bitmap;
+          import android.graphics.BitmapFactory;
           import android.graphics.Color;
+          import android.graphics.Outline;
           import android.graphics.Typeface;
           import android.graphics.drawable.Drawable;
           import android.graphics.drawable.GradientDrawable;
@@ -95,6 +99,7 @@ jobs:
           import android.view.Gravity;
           import android.view.View;
           import android.view.ViewGroup;
+          import android.view.ViewOutlineProvider;
           import android.widget.FrameLayout;
           import android.widget.HorizontalScrollView;
           import android.widget.ImageView;
@@ -102,6 +107,7 @@ jobs:
           import android.widget.TextClock;
           import android.widget.TextView;
           import android.widget.Toast;
+          import java.io.File;
           import java.util.ArrayList;
           import java.util.Collections;
           import java.util.Comparator;
@@ -121,6 +127,7 @@ jobs:
 
             SharedPreferences prefs;
             LinearLayout tileRow;
+            ImageView photo;
             float u;
 
             int s(int v) { return Math.round(v * u); }
@@ -175,7 +182,20 @@ jobs:
               date.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(34));
               top.addView(clock);
               top.addView(date);
-              root.addView(top, new LinearLayout.LayoutParams(MATCH, WRAP));
+              LinearLayout topRow = new LinearLayout(this);
+              topRow.setOrientation(LinearLayout.HORIZONTAL);
+              topRow.addView(top, new LinearLayout.LayoutParams(0, WRAP, 1f));
+              photo = new ImageView(this);
+              photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+              photo.setVisibility(View.GONE);
+              photo.setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View v, Outline o) {
+                  o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), s(24));
+                }
+              });
+              photo.setClipToOutline(true);
+              topRow.addView(photo, new LinearLayout.LayoutParams(s(210), s(260)));
+              root.addView(topRow, new LinearLayout.LayoutParams(MATCH, WRAP));
 
               HorizontalScrollView sv = new HorizontalScrollView(this);
               sv.setHorizontalScrollBarEnabled(false);
@@ -239,6 +259,7 @@ jobs:
 
             @Override protected void onResume() {
               super.onResume();
+              loadPhoto();
               refresh();
             }
 
@@ -365,6 +386,26 @@ jobs:
                 startActivity(i);
               } catch (Exception e) {
                 Toast.makeText(this, "Cannot open: " + pkg, Toast.LENGTH_LONG).show();
+              }
+            }
+
+            void loadPhoto() {
+              try {
+                File f = new File(android.os.Environment.getExternalStorageDirectory(), "launcher_photo.jpg");
+                if (!f.exists()) { photo.setVisibility(View.GONE); return; }
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(f.getPath(), o);
+                int ss = 1;
+                while (o.outWidth / ss > 1000 || o.outHeight / ss > 1000) ss *= 2;
+                BitmapFactory.Options o2 = new BitmapFactory.Options();
+                o2.inSampleSize = ss;
+                Bitmap bm = BitmapFactory.decodeFile(f.getPath(), o2);
+                if (bm == null) { photo.setVisibility(View.GONE); return; }
+                photo.setImageBitmap(bm);
+                photo.setVisibility(View.VISIBLE);
+              } catch (Exception e) {
+                photo.setVisibility(View.GONE);
               }
             }
 
