@@ -53,6 +53,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+            <uses-permission android:name="android.permission.INTERNET" />
             <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
             <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
             <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -123,6 +124,11 @@ jobs:
           import android.widget.TextView;
           import android.widget.Toast;
           import java.io.File;
+          import java.io.BufferedReader;
+          import java.io.InputStreamReader;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
+          import org.json.JSONObject;
           import java.util.ArrayList;
           import java.util.Collections;
           import java.util.Comparator;
@@ -148,10 +154,19 @@ jobs:
             Runnable tick = new Runnable() {
               @Override public void run() {
                 updateClock();
+                maybeWeather();
                 handler.postDelayed(this, 1000 - (System.currentTimeMillis() % 1000) + 5);
               }
             };
             float u;
+            TextView weatherTv;
+            long lastWeather = 0;
+            static final String[] CITY_NAMES = {"Faridpur", "Dhaka", "Chattogram", "Khulna", "Rajshahi", "Sylhet", "Barishal",
+                "Rangpur", "Mymensingh", "Cumilla", "Bogura", "Jashore", "Cox's Bazar", "Gazipur", "Narayanganj"};
+            static final double[][] CITY_POS = {{23.6070, 89.8429}, {23.8103, 90.4125}, {22.3569, 91.7832}, {22.8456, 89.5403},
+                {24.3745, 88.6042}, {24.8949, 91.8687}, {22.7010, 90.3535}, {25.7439, 89.2752}, {24.7471, 90.4203},
+                {23.4607, 91.1809}, {24.8465, 89.3773}, {23.1664, 89.2081}, {21.4272, 92.0058}, {23.9999, 90.4203},
+                {23.6238, 90.5000}};
 
             int s(int v) { return Math.round(v * u); }
 
@@ -288,6 +303,21 @@ jobs:
               dateTv.setSingleLine(true);
               top.addView(clockTv);
               top.addView(dateTv);
+              weatherTv = new TextView(this);
+              weatherTv.setTextSize(TypedValue.COMPLEX_UNIT_PX, s(34));
+              weatherTv.setTextColor(Color.WHITE);
+              weatherTv.setMaxLines(2);
+              weatherTv.setFocusable(true);
+              weatherTv.setClickable(true);
+              weatherTv.setPadding(s(8), s(6), s(8), s(6));
+              weatherTv.setBackground(bg(0x00000000, 0x44FFFFFF, s(14)));
+              weatherTv.setOnClickListener(v -> pickCity());
+              LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(WRAP, WRAP);
+              wlp.topMargin = s(10);
+              top.addView(weatherTv, wlp);
+              String cachedWx = prefs.getString("wx", null);
+              if (cachedWx != null) showWeather(cachedWx);
+              else weatherTv.setText("Weather: loading...");
               LinearLayout topRow = new LinearLayout(this);
               topRow.setOrientation(LinearLayout.HORIZONTAL);
               topRow.addView(top, new LinearLayout.LayoutParams(0, WRAP, 1f));
@@ -367,6 +397,7 @@ jobs:
             @Override protected void onResume() {
               super.onResume();
               loadPhoto();
+              maybeWeather();
               refresh();
               handler.removeCallbacks(tick);
               handler.post(tick);
@@ -540,6 +571,113 @@ jobs:
               put(ds, " ", 0xFFFFFFFF);
               put(ds, fmt("yyyy", now), 0xFF4DD0E1);
               dateTv.setText(ds);
+            }
+
+            void maybeWeather() {
+              long n = System.currentTimeMillis();
+              if (n - lastWeather > 20 * 60 * 1000L) {
+                lastWeather = n;
+                fetchWeather();
+              }
+            }
+
+            String desc(int c) {
+              if (c == 0) return "Clear sky";
+              if (c == 1) return "Mainly clear";
+              if (c == 2) return "Partly cloudy";
+              if (c == 3) return "Overcast";
+              if (c == 45 || c == 48) return "Fog";
+              if (c >= 51 && c <= 57) return "Drizzle";
+              if (c >= 61 && c <= 67) return "Rain";
+              if (c >= 71 && c <= 77) return "Snow";
+              if (c >= 80 && c <= 82) return "Rain showers";
+              if (c == 85 || c == 86) return "Snow showers";
+              if (c >= 95) return "Thunderstorm";
+              return "Weather";
+            }
+
+            void showWeather(String raw) {
+              try {
+                String[] p = raw.split("\\|");
+                SpannableStringBuilder sb = new SpannableStringBuilder();
+                put(sb, p[0] + "\u00B0C", 0xFFFFD54F);
+                put(sb, "  " + desc(Integer.parseInt(p[4])), 0xFF4FC3F7);
+                put(sb, "  " + p[7], 0xFFFFFFFF);
+                put(sb, "\n", 0xFFFFFFFF);
+                int st = sb.length();
+                put(sb, "Feels " + p[1] + "\u00B0   H " + p[5] + "\u00B0   L " + p[6] + "\u00B0   Humidity " + p[2]
+                    + "%   Wind " + p[3] + " km/h", 0xFFB0BEC5);
+                sb.setSpan(new RelativeSizeSpan(0.72f), st, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                weatherTv.setText(sb);
+              } catch (Exception e) {
+                weatherTv.setText("Weather: --");
+              }
+            }
+
+            int cityIdx() {
+              int i = prefs.getInt("city", 0);
+              return (i >= 0 && i < CITY_NAMES.length) ? i : 0;
+            }
+
+            void pickCity() {
+              new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                .setTitle("Select city for weather")
+                .setItems(CITY_NAMES, (d, which) -> {
+                  prefs.edit().putInt("city", which).remove("wx").apply();
+                  weatherTv.setText("Weather: loading...");
+                  lastWeather = System.currentTimeMillis();
+                  fetchWeather();
+                })
+                .show();
+            }
+
+            void fetchWeather() {
+              final int ci = cityIdx();
+              new Thread(() -> {
+                String res = null;
+                String err = null;
+                HttpURLConnection conn = null;
+                try {
+                  String url = "https://api.open-meteo.com/v1/forecast?latitude=" + CITY_POS[ci][0]
+                      + "&longitude=" + CITY_POS[ci][1]
+                      + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+                      + "&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1";
+                  conn = (HttpURLConnection) new URL(url).openConnection();
+                  conn.setConnectTimeout(10000);
+                  conn.setReadTimeout(10000);
+                  BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                  StringBuilder body = new StringBuilder();
+                  String ln;
+                  while ((ln = br.readLine()) != null) body.append(ln);
+                  br.close();
+                  JSONObject j = new JSONObject(body.toString());
+                  JSONObject cur = j.getJSONObject("current");
+                  JSONObject dl = j.getJSONObject("daily");
+                  res = Math.round(cur.getDouble("temperature_2m"))
+                      + "|" + Math.round(cur.getDouble("apparent_temperature"))
+                      + "|" + Math.round(cur.getDouble("relative_humidity_2m"))
+                      + "|" + Math.round(cur.getDouble("wind_speed_10m"))
+                      + "|" + cur.getInt("weather_code")
+                      + "|" + Math.round(dl.getJSONArray("temperature_2m_max").getDouble(0))
+                      + "|" + Math.round(dl.getJSONArray("temperature_2m_min").getDouble(0))
+                      + "|" + CITY_NAMES[ci];
+                } catch (Exception e) {
+                  err = e.getClass().getSimpleName();
+                } finally {
+                  if (conn != null) conn.disconnect();
+                }
+                final String fr = res;
+                final String fe = err;
+                runOnUiThread(() -> {
+                  if (fr != null) {
+                    prefs.edit().putString("wx", fr).apply();
+                    showWeather(fr);
+                  } else {
+                    lastWeather = System.currentTimeMillis() - 15 * 60 * 1000L;
+                    if (prefs.getString("wx", null) == null) weatherTv.setText("Weather unavailable (" + fe + ")");
+                  }
+                });
+              }).start();
             }
 
             void loadPhoto() {
