@@ -87,6 +87,11 @@ jobs:
           import android.content.pm.ResolveInfo;
           import android.graphics.Bitmap;
           import android.graphics.BitmapFactory;
+          import android.graphics.BlurMaskFilter;
+          import android.graphics.Canvas;
+          import android.graphics.Paint;
+          import android.graphics.drawable.BitmapDrawable;
+          import android.graphics.drawable.LayerDrawable;
           import android.graphics.Color;
           import android.graphics.Matrix;
           import android.media.ExifInterface;
@@ -163,6 +168,93 @@ jobs:
               sl.addState(new int[]{android.R.attr.state_pressed}, f);
               sl.addState(new int[]{}, n);
               return sl;
+            }
+
+            int shade(int c, float f) {
+              float t = Math.abs(f);
+              int target = f > 0 ? 255 : 0;
+              int r = Math.round(Color.red(c) + (target - Color.red(c)) * t);
+              int g = Math.round(Color.green(c) + (target - Color.green(c)) * t);
+              int bl = Math.round(Color.blue(c) + (target - Color.blue(c)) * t);
+              return Color.argb(Color.alpha(c), r, g, bl);
+            }
+
+            void lift(View v, final int radius, int elev) {
+              v.setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View x, Outline o) {
+                  o.setRoundRect(0, 0, x.getWidth(), x.getHeight(), radius);
+                }
+              });
+              v.setElevation(elev);
+            }
+
+            void pop(View v) {
+              v.setOnFocusChangeListener((x, f) -> x.animate()
+                  .scaleX(f ? 1.08f : 1f).scaleY(f ? 1.08f : 1f)
+                  .translationZ(f ? s(16) : 0).setDuration(150).start());
+            }
+
+            TextView badge3d(String ch, int color, int size, int textPx) {
+              final int r = Math.round(size * 0.24f);
+              int depth = Math.round(size * 0.07f);
+              GradientDrawable side = new GradientDrawable();
+              side.setColor(shade(color, -0.5f));
+              side.setCornerRadius(r);
+              GradientDrawable face = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                  new int[]{shade(color, 0.35f), color, shade(color, -0.25f)});
+              face.setCornerRadius(r);
+              face.setStroke(Math.max(1, s(2)), shade(color, 0.55f));
+              GradientDrawable gloss = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                  new int[]{0x88FFFFFF, 0x00FFFFFF});
+              float gr = r * 0.8f;
+              gloss.setCornerRadii(new float[]{gr, gr, gr, gr, 0, 0, 0, 0});
+              LayerDrawable ld = new LayerDrawable(new Drawable[]{side, face, gloss});
+              ld.setLayerInset(1, 0, 0, 0, depth);
+              int gi = Math.round(size * 0.05f);
+              ld.setLayerInset(2, gi, gi, gi, Math.round(size * 0.55f));
+              TextView tv = text(ch, textPx, Color.WHITE);
+              tv.setTypeface(Typeface.DEFAULT_BOLD);
+              tv.setShadowLayer(s(4), 0, s(3), 0xAA000000);
+              tv.setPadding(0, 0, 0, depth);
+              tv.setBackground(ld);
+              lift(tv, r, s(10));
+              return tv;
+            }
+
+            Drawable card3d(int radius) {
+              GradientDrawable n = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                  new int[]{0x55FFFFFF, 0x1AFFFFFF});
+              n.setCornerRadius(radius);
+              n.setStroke(s(2), 0x44FFFFFF);
+              GradientDrawable f = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                  new int[]{0x99FFFFFF, 0x44FFFFFF});
+              f.setCornerRadius(radius);
+              f.setStroke(s(5), Color.WHITE);
+              StateListDrawable sl = new StateListDrawable();
+              sl.addState(new int[]{android.R.attr.state_focused}, f);
+              sl.addState(new int[]{android.R.attr.state_pressed}, f);
+              sl.addState(new int[]{}, n);
+              return sl;
+            }
+
+            Drawable shadowIcon(Drawable d, int size) {
+              int pad = s(24);
+              Bitmap src = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+              Canvas sc = new Canvas(src);
+              d.setBounds(0, 0, size, size);
+              d.draw(sc);
+              int full = size + pad * 2;
+              Bitmap out = Bitmap.createBitmap(full, full, Bitmap.Config.ARGB_8888);
+              Canvas oc = new Canvas(out);
+              Paint bp = new Paint();
+              bp.setMaskFilter(new BlurMaskFilter(s(12), BlurMaskFilter.Blur.NORMAL));
+              int[] off = new int[2];
+              Bitmap alpha = src.extractAlpha(bp, off);
+              Paint sp = new Paint();
+              sp.setColor(0xCC000000);
+              oc.drawBitmap(alpha, pad + off[0], pad + off[1] + s(10), sp);
+              oc.drawBitmap(src, pad, pad - s(4), null);
+              return new BitmapDrawable(getResources(), out);
             }
 
             TextView text(String t, int px, int color) {
@@ -249,12 +341,8 @@ jobs:
                 item.setClickable(true);
                 item.setPadding(s(10), s(12), s(10), s(12));
                 item.setBackground(bg(0x00000000, 0x55FFFFFF, s(24)));
-                TextView badge = text(m[0].substring(0, 1), s(46), Color.WHITE);
-                badge.setTypeface(Typeface.DEFAULT_BOLD);
-                GradientDrawable bb = new GradientDrawable();
-                bb.setColor(Color.parseColor(m[1]));
-                bb.setCornerRadius(s(24));
-                badge.setBackground(bb);
+                pop(item);
+                TextView badge = badge3d(m[0].substring(0, 1), Color.parseColor(m[1]), s(100), s(46));
                 item.addView(badge, new LinearLayout.LayoutParams(s(100), s(100)));
                 TextView lab = text(m[0], s(26), Color.WHITE);
                 LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(WRAP, WRAP);
@@ -301,16 +389,21 @@ jobs:
               t.setGravity(Gravity.CENTER);
               t.setFocusable(true);
               t.setClickable(true);
-              t.setBackground(bg(0x33FFFFFF, 0x66FFFFFF, s(28)));
+              t.setBackground(card3d(s(28)));
+              lift(t, s(28), s(12));
+              pop(t);
               LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(s(300), s(340));
               lp.setMargins(s(16), 0, s(16), 0);
               t.setLayoutParams(lp);
               if (icon != null) {
                 ImageView iv = new ImageView(this);
-                iv.setImageDrawable(icon);
-                t.addView(iv, new LinearLayout.LayoutParams(s(170), s(170)));
+                iv.setImageDrawable(shadowIcon(icon, s(150)));
+                t.addView(iv, new LinearLayout.LayoutParams(s(200), s(200)));
               } else {
-                t.addView(text("+", s(150), Color.WHITE), new LinearLayout.LayoutParams(WRAP, s(170)));
+                LinearLayout.LayoutParams plus = new LinearLayout.LayoutParams(s(140), s(140));
+                plus.topMargin = s(30);
+                plus.bottomMargin = s(30);
+                t.addView(badge3d("+", 0xFF5C6BC0, s(140), s(90)), plus);
               }
               TextView tv = text(label, s(32), Color.WHITE);
               tv.setMaxLines(1);
