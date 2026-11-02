@@ -103,6 +103,7 @@ jobs:
           import android.graphics.drawable.StateListDrawable;
           import android.os.Bundle;
           import android.os.Handler;
+          import android.os.SystemClock;
           import android.text.SpannableStringBuilder;
           import android.text.Spanned;
           import android.text.style.ForegroundColorSpan;
@@ -392,6 +393,16 @@ jobs:
               }
               root.addView(bar, new LinearLayout.LayoutParams(MATCH, WRAP));
               setContentView(root);
+              if (b == null) autoLiveOnBoot();
+            }
+
+            void autoLiveOnBoot() {
+              long bootTime = System.currentTimeMillis() - SystemClock.elapsedRealtime();
+              long last = prefs.getLong("boot", 0);
+              if (Math.abs(bootTime - last) > 120000L) {
+                prefs.edit().putLong("boot", bootTime).apply();
+                handler.postDelayed(() -> open(OLD_PKG, LIVE_CLS), 1500);
+              }
             }
 
             @Override protected void onResume() {
